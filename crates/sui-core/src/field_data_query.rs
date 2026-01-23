@@ -13,6 +13,26 @@ use sui_types::{
 
 use crate::authority::authority_store_tables::AuthorityPerpetualTables;
 
+/// Encode index as BCS bytes based on the key type
+fn encode_key_bytes(index: u64, key_type: &TypeTag) -> Result<Vec<u8>, bcs::Error> {
+    match key_type {
+        TypeTag::U64 => {
+            // For U64 keys, encode as u64 (8 bytes)
+            bcs::to_bytes(&index)
+        }
+        TypeTag::Struct(_) => {
+            // For struct keys (e.g., I32), encode as u32 (4 bytes)
+            // This assumes the struct wraps a u32 field (like I32 { bits: u32 })
+            let index_u32 = index as u32;
+            bcs::to_bytes(&index_u32)
+        }
+        _ => {
+            // Default to u64 for other types
+            bcs::to_bytes(&index)
+        }
+    }
+}
+
 /// Query result containing the index and its corresponding field data
 #[derive(Debug, Clone)]
 pub struct FieldData {
@@ -49,8 +69,8 @@ pub fn query_field_data_range(
 
     // Iterate through all indices in the range
     for index in lower_index..=upper_index {
-        // Serialize the index as BCS bytes
-        let key_bytes = bcs::to_bytes(&index)
+        // Serialize the index as BCS bytes (u32 for I32 struct, u64 for U64)
+        let key_bytes = encode_key_bytes(index, key_type)
             .map_err(|e| {
                 sui_types::error::SuiErrorKind::ObjectSerializationError {
                     error: format!("Failed to serialize index {}: {}", index, e),
@@ -104,7 +124,7 @@ pub fn query_field_data_range_validated(
     let mut results = HashMap::new();
 
     for index in lower_index..=upper_index {
-        let key_bytes = bcs::to_bytes(&index)
+        let key_bytes = encode_key_bytes(index, key_type)
             .map_err(|e| {
                 sui_types::error::SuiErrorKind::ObjectSerializationError {
                     error: format!("BCS error: {}", e),
@@ -156,7 +176,7 @@ pub fn query_field_data_range_sparse(
     let mut consecutive_misses = 0;
 
     for index in lower_index..=upper_index {
-        let key_bytes = bcs::to_bytes(&index)
+        let key_bytes = encode_key_bytes(index, key_type)
             .map_err(|e| {
                 sui_types::error::SuiErrorKind::ObjectSerializationError {
                     error: format!("BCS error: {}", e),
